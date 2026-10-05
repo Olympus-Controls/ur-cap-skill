@@ -30,18 +30,37 @@ Read the one for the task before you start:
 | Writing URScript in a template or hook | `references/urscript.md` |
 | CI, the required check, releasing, upgrading urcapgen | `references/ci.md` |
 
-## No monorepo yet?
+## Where you are, and getting started
 
-URCaps live in a URCap monorepo: a directory with a `.urcapgen` file, found by walking up
-from the current directory. If there isn't one:
+**Inside a URCap monorepo** (a `.urcapgen` file here or above): use its `./urcapgen`.
 
-1. Ask the user where it should go (a new repo, e.g. `~/github/<customer>-urcaps`), or
-   whether one already exists somewhere.
-2. `urcapgen init <dir> --name "<title>"`. If `urcapgen` isn't on PATH:
-   `pipx install git+https://github.com/Olympus-Controls/ur-cap-skill` (see the ur-cap-skill README).
-3. `cd <dir> && git init -b main`. From here on, use the monorepo's own `./urcapgen`.
-4. Pushing it to GitHub enables CI/CD (`references/ci.md`). Offer it, but don't push without
-   being asked.
+**Otherwise**, get urcapgen from, in order:
+
+1. `urcapgen` on PATH;
+2. the copy bundled with this skill, in the `urcapgen/` folder next to this `SKILL.md` (the
+   uploaded-zip install): `PYTHONPATH=<this skill's folder> python3 -m urcapgen …`.
+
+Then:
+
+- **In a GitHub-connected session** (Claude Code on the web or the Desktop app's Code tab,
+  working in the user's repository): the repository is the monorepo. If it has no
+  `.urcapgen` yet, run `urcapgen init .` in its root, keeping the README the user created.
+  Then create the URCap, verify, commit and **push**. The repository's CI then builds and
+  tests it against every PolyScope release. Tell the user to open the repository's
+  **Actions** tab to watch it, and when they're ready to release, tag it (see
+  `references/ci.md`). Offer to tag it for them.
+- **In a plain chat without GitHub** (no network, no Java): nothing can be built or tested
+  for PolyScope 5 here. Write the spec, generate, check scripts with `render`, then zip the
+  monorepo and offer it as a download. Explain plainly that the robot files are built by
+  GitHub: the user should create a GitHub repository, open it in the Claude app's **Code**
+  tab, and ask again there.
+- **On a user's own machine** (Claude Code CLI): ask where the monorepo should go, then
+  `urcapgen init <dir>` and `git init -b main`. Don't push without being asked.
+
+The people using this skill know their robot and Windows. They usually don't know git,
+Python or TOML. Speak in robot terms ("a program node called Grip with a force setting from
+20 to 185 N"), not file formats. Never ask them to run commands, and summarise what you
+built in a sentence or two.
 
 ## The loop
 

@@ -1,0 +1,45 @@
+# Push a tag `v<version>` (urcapgen/__init__.py's __version__) to publish urcap-skill.zip — the
+# file Claude app users upload as a custom skill — as a GitHub Release. The README and
+# docs/index.html link to releases/latest/download/urcap-skill.zip.
+
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: the tag is urcapgen's version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          v=$(python3 -c 'import urcapgen; print(urcapgen.__version__)')
+          if [ "$TAG" != "v$v" ]; then echo "::error::tag $TAG but urcapgen/__init__.py says $v"; exit 1; fi
+      - name: build urcap-skill.zip
+        run: python3 scripts/build-skill-zip.py dist/urcap-skill.zip
+      - name: the zip's urcapgen works on its own
+        run: |
+          mkdir -p "$RUNNER_TEMP/z" && cd "$RUNNER_TEMP/z" && unzip -q "$GITHUB_WORKSPACE/dist/urcap-skill.zip"
+          PYTHONPATH="$RUNNER_TEMP/z/urcap" python3 -m urcapgen init "$RUNNER_TEMP/m"
+          cd "$RUNNER_TEMP/m" && ./urcapgen new check --name Check --vendor-id acme --vendor-name Acme && ./urcapgen gen --check
+      - name: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/urcap-skill.zip --repo "$GITHUB_REPOSITORY" --verify-tag --title "URCap Skill $TAG" \
+            --notes "Download **urcap-skill.zip** and upload it in Claude: Settings → Customize → Skills → Upload skill. Guide: https://olympus-controls.github.io/ur-cap-skill/"

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URCap Skill for Claude</title>
+<meta name="description" content="Describe a URCap in plain words. Claude builds it for PolyScope 5 and PolyScope X, tests it on every version, and gives you files for a USB stick.">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #17202b; --muted: #5b6673; --line: #dde2e8;
+    --accent: #0b5cad; --accent-ink: #ffffff; --soft: #e8f1fb; --ok: #1d7a46; --warn-bg: #fff6e0; --warn-line: #e9c46a;
+    --code: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11161c; --card: #1a2129; --ink: #e8edf2; --muted: #9aa6b2; --line: #2c3540;
+      --accent: #5aa2ec; --accent-ink: #0c1117; --soft: #1b2a3a; --ok: #5cc98b; --warn-bg: #2b2414; --warn-line: #7a6326;
+      --code: #232c36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 17px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { font-size: 34px; line-height: 1.15; margin: 8px 0 10px; letter-spacing: -0.01em; }
+  header p { font-size: 19px; color: var(--muted); margin: 0 0 20px; }
+  .tag { display: inline-block; font-size: 13px; font-weight: 600; color: var(--accent); background: var(--soft);
+         padding: 3px 10px; border-radius: 999px; }
+  .btn { display: inline-block; background: var(--accent); color: var(--accent-ink); text-decoration: none;
+         font-weight: 600; padding: 12px 20px; border-radius: 10px; }
+  .btn:hover { filter: brightness(1.08); }
+  h2 { font-size: 24px; margin: 44px 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin: 12px 0; }
+  .needs { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .needs .card { margin: 0; }
+  .needs b { display: block; font-size: 15px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 18px 20px 18px 70px; background: var(--card);
+                  border: 1px solid var(--line); border-radius: 14px; margin: 12px 0; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 18px; top: 16px; width: 36px; height: 36px;
+                          border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 700; line-height: 1;
+                          display: grid; place-items: center; }
+  ol.steps h3 { margin: 4px 0 6px; font-size: 19px; }
+  ol.steps p { margin: 4px 0; }
+  .path { font-weight: 600; }
+  .prompt { position: relative; background: var(--code); border-radius: 10px; padding: 14px 16px; margin: 10px 0;
+            font-size: 16px; }
+  .prompt button { position: absolute; top: 8px; right: 8px; font: inherit; font-size: 13px; padding: 4px 10px;
+                   border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  .prompt p { margin: 0; padding-right: 64px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .two .card { margin: 0; }
+  .two h3 { margin: 0 0 8px; font-size: 18px; }
+  .two ol { margin: 0; padding-left: 20px; }
+  .note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 12px; padding: 14px 18px; margin: 14px 0; }
+  .ok { color: var(--ok); font-weight: 600; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 18px; margin: 10px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin: 10px 0 2px; }
+  footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+  @media (max-width: 640px) {
+    header h1 { font-size: 28px; }
+    .two { grid-template-columns: 1fr; }
+    ol.steps > li { padding-left: 62px; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <span class="tag">For Universal Robots users</span>
+  <h1>Describe a URCap. Claude builds it.</h1>
+  <p>Tell Claude what the URCap should do, in your own words. You get a URCap for
+     <b>PolyScope 5</b> and <b>PolyScope X</b>, tested on every software version UR has released, ready for a USB stick.</p>
+  <a class="btn" href="https://github.com/Olympus-Controls/ur-cap-skill/releases/latest/download/urcap-skill.zip">Download the skill (urcap-skill.zip)</a>
+</header>
+
+<h2>What you need</h2>
+<div class="needs">
+  <div class="card"><b>Claude</b>A paid plan (Pro or higher), in the Claude app for Windows or at claude.ai</div>
+  <div class="card"><b>GitHub</b>A free account at <a href="https://github.com/signup">github.com</a>. It builds and stores your URCaps</div>
+  <div class="card"><b>Robot</b>e-Series on PolyScope 5.4+, or PolyScope X 10.8+. Not CB3</div>
+  <div class="card"><b>USB stick</b>Any normal stick (FAT32)</div>
+</div>
+<p>Nothing to install on your computer.</p>
+
+<h2>Set up once</h2>
+<ol class="steps">
+  <li>
+    <h3>Download the skill</h3>
+    <p>Get <a href="https://github.com/Olympus-Controls/ur-cap-skill/releases/latest/download/urcap-skill.zip">urcap-skill.zip</a>. Leave it zipped.</p>
+  </li>
+  <li>
+    <h3>Add it to Claude</h3>
+    <p>In Claude's <span class="path">Settings</span>, make sure <span class="path">Code execution and file creation</span> is on.</p>
+    <p>Then <span class="path">Settings → Customize → Skills → Upload skill</span>, and pick the zip.</p>
+  </li>
+  <li>
+    <h3>Make a place for your URCaps on GitHub</h3>
+    <p>On github.com click <span class="path">New repository</span>, name it (for example <code>my-urcaps</code>),
+       tick <span class="path">Add a README file</span>, then <span class="path">Create repository</span>.</p>
+  </li>
+  <li>
+    <h3>Open it in Claude</h3>
+    <p>In Claude, open <span class="path">Code</span>. Connect your GitHub account when asked, and choose the repository you just made.</p>
+  </li>
+</ol>
+
+<h2>Ask for a URCap</h2>
+<p>In that Code session, say what you want, the way you'd explain it to a colleague. For example:</p>
+
+<div class="prompt"><button type="button" data-copy>Copy</button><p>Make a URCap called Part Counter. Add a program node "Count Part" that adds one to a part counter and pops up a message every 100 parts. In the installation screen, let me set the popup interval and reset the count.</p></div>
+
+<div class="prompt"><button type="button" data-copy>Copy</button><p>Make a URCap called Vacuum Gripper with two program nodes, Pick and Release. Pick turns on tool digital output 0 and waits for standard digital input 3 (vacuum OK). If it doesn't come on within a timeout I can set in the node, default 2 seconds, stop with a popup. Release turns output 0 off and pulses output 1 for 0.3 seconds.</p></div>
+
+<div class="prompt"><button type="button" data-copy>Copy</button><p>Add a toolbar button to Part Counter that shows the current count.</p></div>
+
+<p>Claude asks about anything it can't work out: your company name, which inputs and outputs,
+   units and limits. <b>It never guesses I/O numbers or motion values.</b> Then it builds the URCap and saves it to GitHub.</p>
+
+<h2>Get it on the robot</h2>
+<ol class="steps">
+  <li>
+    <h3>Wait for the green tick</h3>
+    <p>GitHub tests your URCap in Universal Robots' own simulator, on <b>every PolyScope 5 version from 5.4 and every PolyScope X release</b>.
+       It takes 20–40 minutes. Watch it on your repository's <span class="path">Actions</span> tab. <span class="ok">✓ green</span> means it worked everywhere.
+       If anything fails, tell Claude "the tests failed, fix it".</p>
+  </li>
+  <li>
+    <h3>Say "Release it"</h3>
+    <p>A minute later the files are on your repository's <span class="path">Releases</span> page. Download them and copy them to the USB stick.</p>
+  </li>
+  <li>
+    <h3>Install on the pendant</h3>
+    <div class="two">
+      <div class="card">
+        <h3>PolyScope 5 (e-Series)</h3>
+        <ol>
+          <li>Plug in the stick with the <code>.urcap</code> file</li>
+          <li>☰ → Settings → System → URCaps → <b>+</b></li>
+          <li>Pick the file → <b>Restart</b></li>
+        </ol>
+        <p style="margin:10px 0 0;font-size:15px">Shortcut: also copy the <code>urmagic_…sh</code> file to the stick and turn on
+          Settings → Security → General → <b>Run magic files</b>. The robot then installs it by itself when the stick goes in (arm powered off).</p>
+      </div>
+      <div class="card">
+        <h3>PolyScope X</h3>
+        <ol>
+          <li>Plug in the stick with the <code>.urcapx</code> file</li>
+          <li>☰ → System Manager → URCaps</li>
+          <li>Add the file</li>
+        </ol>
+      </div>
+    </div>
+  </li>
+</ol>
+
+<div class="note"><b>Before production:</b> the simulator tests catch a broken URCap, not an unsafe program. Run every new URCap on the real
+  robot at reduced speed first, like any new program.</div>
+
+<h2>Questions</h2>
+<details><summary>How do I change a URCap later?</summary>
+  <p>Open the same repository in Claude's Code tab and say what to change: "make the default timeout 3 seconds", "add a node that…".
+     Wait for the green tick, then say "Release it" again.</p></details>
+<details><summary>Can my repository be private?</summary>
+  <p>Yes. GitHub gives free accounts 2,000 test minutes a month on private repositories, and a full test run uses a good part of that.
+     Public repositories test for free without limit.</p></details>
+<details><summary>Can I do this without GitHub?</summary>
+  <p>Claude can design a URCap in a normal chat and give you the source as a zip, but it can't build or test the robot files there.
+     GitHub does that part.</p></details>
+<details><summary>Which robots does it work on?</summary>
+  <p>Any UR arm running PolyScope 5.4 or newer (e-Series: UR3e, UR5e, UR10e, UR16e, UR20, UR30 and others) or PolyScope X.
+     CB3 robots (PolyScope 3) are not supported. A URCap with a toolbar button needs PolyScope X 10.10 or newer.</p></details>
+<details><summary>Who owns the URCaps I make?</summary>
+  <p>You do. The skill is free and open source (MIT licence).</p></details>
+
+<footer>
+  URCap Skill for Claude by Olympus Controls · <a href="https://github.com/Olympus-Controls/ur-cap-skill">Source on GitHub</a> ·
+  Not affiliated with Universal Robots.
+</footer>
+
+</main>
+<script>
+  document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+    const text = b.parentElement.querySelector("p").textContent;
+    try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; }
+    catch (e) { b.textContent = "Select & copy"; }
+    setTimeout(() => { b.textContent = "Copy"; }, 1600);
+  }));
+</script>
+</body>
+</html>
