@@ -1,0 +1,45 @@
+# Managed by urcapgen {{URCAPGEN_VERSION}} — `./urcapgen upgrade` rewrites this file.
+#
+# Weekly: has Universal Robots published a PolyScope 5 or PolyScope X release newer than
+# urcapgen's simulator tables? If so, open (or comment on) an issue labelled
+# `urcapgen-attention`: run `urcapgen upgrade` from a urcapgen that knows the release (or add
+# it to tools/urcapgen/e2e.py's tables) so the CI matrix covers it.
+
+name: UR releases
+
+on:
+  schedule:
+    - cron: "41 6 * * 1" # Mondays 06:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tags:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Docker Hub vs the simulator tables
+        id: check
+        run: |
+          set +e
+          { ./urcapgen check-tags ps5; echo "ps5 exit $?"; ./urcapgen check-tags psx; echo "psx exit $?"; } > report.txt 2>&1
+          cat report.txt
+          grep -q 'exit [1-9]' report.txt && echo "stale=true" >> "$GITHUB_OUTPUT" || echo "stale=false" >> "$GITHUB_OUTPUT"
+      - name: open or update the issue
+        if: steps.check.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create urcapgen-attention --color B60205 --description "UR released something urcapgen does not test yet" 2>/dev/null || true
+          body=$(printf 'Universal Robots published releases the CI matrix does not cover yet:\n\n```\n%s\n```\n\nUpgrade urcapgen (`./urcapgen upgrade` from a newer urcapgen) or add them to `tools/urcapgen/e2e.py`, then let the URCaps workflow run.' "$(cat report.txt)")
+          n=$(gh issue list --label urcapgen-attention --state open --json number --jq '.[0].number')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "New UR releases to test against" --label urcapgen-attention --body "$body"; fi

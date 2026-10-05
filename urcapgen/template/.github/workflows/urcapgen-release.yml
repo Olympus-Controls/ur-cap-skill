@@ -1,0 +1,91 @@
+# Managed by urcapgen {{URCAPGEN_VERSION}} — `./urcapgen upgrade` rewrites this file.
+#
+# CD: push a tag `<urcap-id>-v<version>` (e.g. `acme-gripper-v1.2.0`, the version must be
+# urcap.toml's) and this builds that URCap from the tagged commit, re-runs its parity, and
+# publishes a GitHub Release with:
+#
+#   <id>-ps5-<version>.urcap     PolyScope 5: Settings → System → URCaps → + (USB stick)
+#   urmagic_<id>.sh              ...or put it beside the .urcap on the stick: installs itself
+#   <id>-<version>.urcapx        PolyScope X: System Manager → URCaps (USB) or `urcapgen install`
+#   SHA256SUMS
+#
+# Tag a commit the "URCaps" workflow passed on (main): the release does not repeat the
+# simulator matrix.
+#
+#   git tag acme-gripper-v1.2.0 && git push origin acme-gripper-v1.2.0
+
+name: URCap release
+
+on:
+  push:
+    tags: ["*-v[0-9]*.[0-9]*.[0-9]*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the previous tag of this URCap, for the change list
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+      - name: the tag names a URCap at the spec's version
+        id: info
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          info=$(./urcapgen release-info "$TAG")
+          echo "$info"
+          python3 -c 'import json,sys; d=json.loads(sys.argv[1]); [print(f"{k}={d[k]}") for k in ("id","version","name")]' "$info" >> "$GITHUB_OUTPUT"
+      - name: generated sources are current
+        run: ./urcapgen gen --check "${{ steps.info.outputs.id }}"
+      - name: build
+        run: ./urcapgen build "${{ steps.info.outputs.id }}"
+      - name: parity
+        run: ./urcapgen parity "${{ steps.info.outputs.id }}"
+      - name: notes
+        env:
+          TAG: ${{ github.ref_name }}
+          ID: ${{ steps.info.outputs.id }}
+          NAME: ${{ steps.info.outputs.name }}
+        run: |
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS && cd ..
+          prev=$(git describe --tags --abbrev=0 --match "$ID-v*" "$TAG^" 2>/dev/null || true)
+          {
+            echo "**$NAME** for Universal Robots."
+            echo
+            if ls dist/*.urcap >/dev/null 2>&1; then
+              echo "**PolyScope 5 (e-Series):** copy \`$(cd dist && ls *.urcap)\` to a FAT32 USB stick → ☰ Settings → System → URCaps → **+** → the file → Open → **Restart**."
+              echo "Or copy \`$(cd dist && ls urmagic_*.sh)\` beside it on the stick: with Settings → Security → General → **Run magic files** enabled, the robot installs it when the stick goes in (arm powered off, no program running)."
+              echo
+            fi
+            if ls dist/*.urcapx >/dev/null 2>&1; then
+              echo "**PolyScope X:** ☰ → System Manager → URCaps → add \`$(cd dist && ls *.urcapx)\` from a USB stick."
+              echo
+            fi
+            echo "### Changes${prev:+ since $prev}"
+            git log --format='- %s (%h)' ${prev:+"$prev.."}"$TAG" -- "urcaps/$ID"
+          } > notes.md
+          cat notes.md
+      - name: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          NAME: ${{ steps.info.outputs.name }}
+          VERSION: ${{ steps.info.outputs.version }}
+        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$NAME $VERSION" --notes-file notes.md

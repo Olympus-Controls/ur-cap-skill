@@ -1,0 +1,3 @@
+graft urcapgen/runtime
+graft urcapgen/template
+global-exclude __pycache__ *.pyc

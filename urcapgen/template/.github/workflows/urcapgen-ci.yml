@@ -1,0 +1,255 @@
+# Managed by urcapgen {{URCAPGEN_VERSION}} — `./urcapgen upgrade` rewrites this file.
+#
+# Every URCap a change touches (all of them when tools/urcapgen or these workflows change):
+#
+#   static   specs load, generated ps5/ + psx/ match urcap.toml (`gen --check`)
+#   build    .urcap against the oldest supported PolyScope 5's API (+ the USB magic file),
+#            .urcapx (+ the backend image), and parity: both URCaps write the same URScript
+#   ps5-api  the built jar against every PolyScope 5 minor from the URCap's floor: its code
+#            compiles against that release's API and OSGi can resolve every import
+#   e2e-ps5  per PolyScope 5 minor: URSim boots with the jar, the bundle starts clean, the
+#            nodes' URScript runs on the controller, the daemon answers
+#   e2e-psx  per PolyScope X release: install over urservice, headless Chromium loads every
+#            node, a field edit persists, the backend container answers
+#   gate     "URCaps gate": the one check to make required — green when nothing relevant
+#            changed, or when everything above passed
+#
+# Pushes to main and the weekly schedule run everything for every URCap.
+
+name: URCaps
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1" # Mondays 05:23 UTC: catch what a new UR release broke
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urcaps-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      urcaps: ${{ steps.plan.outputs.urcaps }}
+      ps5: ${{ steps.plan.outputs.ps5 }}
+      psx: ${{ steps.plan.outputs.psx }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: which URCaps, which simulator versions
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            urcaps=$(./urcapgen changed --base "origin/$BASE")
+          else
+            urcaps=$(./urcapgen list | python3 -c 'import json,sys; print(json.dumps([json.loads(l)["id"] for l in sys.stdin if "error" not in l]))')
+          fi
+          echo "urcaps=$urcaps" >> "$GITHUB_OUTPUT"
+          echo "ps5=$(./urcapgen matrix ps5)" >> "$GITHUB_OUTPUT"
+          echo "psx=$(./urcapgen matrix psx)" >> "$GITHUB_OUTPUT"
+          [ "$urcaps" = "[]" ] && echo "any=false" >> "$GITHUB_OUTPUT" || echo "any=true" >> "$GITHUB_OUTPUT"
+          echo "URCaps: $urcaps"
+
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: every spec loads
+        run: ./urcapgen validate
+        if: hashFiles('urcaps/*/urcap.toml') != ''
+      - name: ps5/ and psx/ are what urcap.toml generates
+        run: ./urcapgen gen --check
+        if: hashFiles('urcaps/*/urcap.toml') != ''
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        urcap: ${{ fromJSON(needs.plan.outputs.urcaps) }}
+    name: build ${{ matrix.urcap }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # javac --release 8: Java 8 bytecode, what PolyScope 5's JRE 1.8 runs
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+      # UR's PolyScope 5 API jars, pulled from the URSim images on Docker Hub; never committed
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .urcapgen-cache/ps5-sdk
+          key: ps5-sdk-${{ hashFiles('urcaps/*/urcap.toml') }}
+          restore-keys: ps5-sdk-
+      - name: build both URCaps
+        env:
+          URCAP: ${{ matrix.urcap }}
+        run: ./urcapgen build "$URCAP"
+      - name: parity — both URCaps write the same URScript
+        env:
+          URCAP: ${{ matrix.urcap }}
+        run: ./urcapgen parity "$URCAP"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.urcap }}
+          path: dist/
+          if-no-files-found: error
+
+  ps5-api:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        urcap: ${{ fromJSON(needs.plan.outputs.urcaps) }}
+        polyscope: ${{ fromJSON(needs.plan.outputs.ps5) }}
+    name: ${{ matrix.urcap }} API on PolyScope ${{ matrix.polyscope }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist-${{ matrix.urcap }}
+          path: dist/
+      - name: compiles against this PolyScope's API; every import is exported
+        env:
+          URCAP: ${{ matrix.urcap }}
+          POLYSCOPE: ${{ matrix.polyscope }}
+        run: ./urcapgen check "$URCAP" --ps5 "$POLYSCOPE" --skip-below-floor
+
+  e2e-ps5:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        urcap: ${{ fromJSON(needs.plan.outputs.urcaps) }}
+        polyscope: ${{ fromJSON(needs.plan.outputs.ps5) }}
+    name: ${{ matrix.urcap }} on PolyScope ${{ matrix.polyscope }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist-${{ matrix.urcap }}
+          path: dist/
+      - name: the URCap in URSim e-Series ${{ matrix.polyscope }}
+        env:
+          URCAP: ${{ matrix.urcap }}
+          POLYSCOPE: ${{ matrix.polyscope }}
+        run: ./urcapgen e2e-ps5 "$URCAP" --version "$POLYSCOPE" --skip-below-floor --artifacts e2e --report "e2e/report.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-ps5-${{ matrix.urcap }}-${{ matrix.polyscope }}
+          path: e2e/
+          if-no-files-found: ignore
+
+  e2e-psx:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        urcap: ${{ fromJSON(needs.plan.outputs.urcaps) }}
+        polyscope: ${{ fromJSON(needs.plan.outputs.psx) }}
+    name: ${{ matrix.urcap }} on PolyScope X ${{ matrix.polyscope }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist-${{ matrix.urcap }}
+          path: dist/
+      - name: the headless browser
+        run: python -m pip install playwright==1.63.0 && python -m playwright install --with-deps chromium
+      - name: the URCap in PolyScope X ${{ matrix.polyscope }}
+        env:
+          URCAP: ${{ matrix.urcap }}
+          POLYSCOPE: ${{ matrix.polyscope }}
+        run: ./urcapgen e2e-psx "$URCAP" --version "$POLYSCOPE" --skip-below-floor --artifacts e2e --report "e2e/report.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-psx-${{ matrix.urcap }}-${{ matrix.polyscope }}
+          path: e2e/
+          if-no-files-found: ignore
+
+  gate:
+    name: URCaps gate
+    if: always()
+    needs: [plan, static, build, ps5-api, e2e-ps5, e2e-psx]
+    runs-on: ubuntu-latest
+    steps:
+      - name: everything relevant passed
+        env:
+          ANY: ${{ needs.plan.outputs.any }}
+          PLAN: ${{ needs.plan.result }}
+          STATIC: ${{ needs.static.result }}
+          BUILD: ${{ needs.build.result }}
+          API: ${{ needs.ps5-api.result }}
+          PS5: ${{ needs.e2e-ps5.result }}
+          PSX: ${{ needs.e2e-psx.result }}
+        run: |
+          echo "plan=$PLAN static=$STATIC build=$BUILD ps5-api=$API e2e-ps5=$PS5 e2e-psx=$PSX (URCaps touched: $ANY)"
+          [ "$PLAN" = success ] && [ "$STATIC" = success ] || { echo "::error::plan=$PLAN static=$STATIC"; exit 1; }
+          if [ "$ANY" != true ]; then echo "no URCap touched"; exit 0; fi
+          for r in "$BUILD" "$API" "$PS5" "$PSX"; do
+            [ "$r" = success ] || { echo "::error::a URCap job did not pass"; exit 1; }
+          done

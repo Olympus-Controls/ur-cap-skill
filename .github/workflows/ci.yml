@@ -1,0 +1,123 @@
+# urcapgen's own CI: unit tests (three template engines fuzzed against each other, the
+# generator's ownership rules, the monorepo commands), then the whole pipeline on a scratch
+# monorepo: init → new (every part) → gen --check → parity (PS5 Java vs PSX JS) → build →
+# the API check on the floor and the newest PolyScope 5 → the simulator e2e on the floor and
+# the newest of each platform.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11" # the floor urcapgen promises
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .urcapgen-cache/ps5-sdk
+          key: ps5-sdk-5.4
+      - name: the PolyScope 5.4 URCap API jars (UR's URSim image, from Docker Hub's registry)
+        run: |
+          [ -f .urcapgen-cache/ps5-sdk/5.4/sdk.json ] || python3 -c "
+          from pathlib import Path; from urcapgen import ps5
+          ps5.fetch_sdk('5.4', Path('.urcapgen-cache/ps5-sdk'))"
+      - name: lint
+        run: python3 -m pip install ruff==0.16.10 && ruff check urcapgen tests
+      - name: unit tests
+        env:
+          URCAPGEN_TEST_SDK: .urcapgen-cache/ps5-sdk
+        run: python3 -m unittest discover -s tests -t . -v
+
+  pipeline:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: ps5, version: "5.4" }
+          - { platform: ps5, version: newest }
+          - { platform: psx, version: "10.10" }
+          - { platform: psx, version: newest }
+    name: pipeline ${{ matrix.platform }} ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+      - name: a monorepo with a URCap using every part
+        run: |
+          python3 -m urcapgen init "$RUNNER_TEMP/m" --name "CI URCaps"
+          cd "$RUNNER_TEMP/m"
+          ./urcapgen new ci-demo --name "CI Demo" --vendor-id acme --vendor-name "Acme Automation" --parts installation,program,toolbar,daemon
+          ./urcapgen gen --check
+          ./urcapgen parity
+          ./urcapgen build
+      - name: the browser
+        if: matrix.platform == 'psx'
+        run: python -m pip install playwright==1.63.0 && python -m playwright install --with-deps chromium
+      - name: e2e
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          cd "$RUNNER_TEMP/m"
+          if [ "$VERSION" = newest ]; then VERSION=$(./urcapgen matrix "$PLATFORM" | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1])'); fi
+          if [ "$PLATFORM" = ps5 ]; then ./urcapgen check ci-demo --ps5 "$VERSION"; fi
+          ./urcapgen "e2e-$PLATFORM" ci-demo --version "$VERSION" --artifacts "$RUNNER_TEMP/e2e" --report "$RUNNER_TEMP/e2e/report.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-${{ matrix.platform }}-${{ matrix.version }}
+          path: ${{ runner.temp }}/e2e/
+          if-no-files-found: ignore
+
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: the monorepo workflows are valid (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          python3 -m urcapgen init "$RUNNER_TEMP/m"
+          ./actionlint -color "$RUNNER_TEMP"/m/.github/workflows/*.yml .github/workflows/*.yml

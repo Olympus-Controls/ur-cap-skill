@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "urcapgen"
+dynamic = ["version"]
+description = "One urcap.toml → a Universal Robots URCap for PolyScope 5 (e-Series) and PolyScope X, with CI/CD."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []  # stdlib only; a JDK (or Docker) and Node.js are used as tools
+
+[project.optional-dependencies]
+e2e = ["playwright==1.63.0"]
+
+[project.scripts]
+urcapgen = "urcapgen.cli:main"
+
+[tool.setuptools]
+packages = ["urcapgen"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "urcapgen.__version__" }
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]  # line length: the formatter's job
