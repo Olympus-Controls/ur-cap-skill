@@ -22,6 +22,10 @@ FIXED = (2026, 1, 1, 0, 0, 0)
 def files() -> list[tuple[str, Path]]:
     out = [(f"urcap/{p.relative_to(SKILL).as_posix()}", p) for p in SKILL.rglob("*") if p.is_file()]
     for p in PACKAGE.rglob("*"):
+        # the template's copy of the skill stays out: Claude's uploader takes exactly one
+        # SKILL.md, and urcapgen finds the skill around itself instead (monorepo.skill_source)
+        if p.is_relative_to(SKILL):
+            continue
         if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
             out.append((f"urcap/urcapgen/{p.relative_to(PACKAGE).as_posix()}", p))
     return sorted(out)
@@ -41,4 +45,8 @@ def build(dest: Path) -> Path:
 
 if __name__ == "__main__":
     out = build(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "dist" / "urcap-skill.zip")
+    with zipfile.ZipFile(out) as z:
+        skills = [n for n in z.namelist() if n.rsplit("/", 1)[-1] == "SKILL.md"]
+    if skills != ["urcap/SKILL.md"]:
+        sys.exit(f"the zip must hold exactly one SKILL.md, at urcap/SKILL.md; it holds {skills}")
     print(out)

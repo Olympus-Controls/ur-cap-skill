@@ -97,7 +97,32 @@ def _template_files():
             else:
                 yield rel, child
 
-    yield from walk(TEMPLATE, "")
+    seen = set()
+    for rel, f in walk(TEMPLATE, ""):
+        seen.add(rel)
+        yield rel, f
+    # The skill: in the template, or — in urcap-skill.zip, which may hold only one SKILL.md —
+    # the skill folder this package ships in.
+    skill = skill_source()
+    for p in sorted(skill.rglob("*")):
+        rel = f"{SKILL_DIR}/{p.relative_to(skill).as_posix()}"
+        if p.is_file() and rel not in seen and "urcapgen" not in p.relative_to(skill).parts[:1]:
+            yield rel, p
+
+
+SKILL_DIR = ".claude/skills/urcap"
+
+
+def skill_source() -> Path:
+    """Where the skill's files are: the template's copy, else the folder around this package
+    (the uploaded urcap-skill.zip: ``urcap/SKILL.md`` beside ``urcap/urcapgen/``)."""
+    t = Path(str(TEMPLATE)) / SKILL_DIR
+    if (t / "SKILL.md").is_file():
+        return t
+    up = Path(__file__).resolve().parent.parent
+    if (up / "SKILL.md").is_file():
+        return up
+    raise RepoError("this urcapgen has no copy of its skill (SKILL.md) — reinstall it")
 
 
 def _is_managed(rel: str) -> bool:
@@ -115,6 +140,10 @@ def _vendor(root: Path) -> None:
     if dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    # a vendored copy always carries the skill in its template, whichever way it was installed
+    skill_dest = dest / "template" / SKILL_DIR
+    if not (skill_dest / "SKILL.md").is_file():
+        shutil.copytree(skill_source(), skill_dest, ignore=shutil.ignore_patterns("urcapgen", "__pycache__", "*.pyc"))
 
 
 def _write_template(root: Path, values: dict[str, str], *, managed_only: bool) -> list[str]:
