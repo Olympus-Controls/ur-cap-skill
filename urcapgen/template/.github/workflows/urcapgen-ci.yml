@@ -63,10 +63,14 @@ jobs:
           else
             urcaps=$(./urcapgen list | python3 -c 'import json,sys; print(json.dumps([json.loads(l)["id"] for l in sys.stdin if "error" not in l]))')
           fi
-          echo "urcaps=$urcaps" >> "$GITHUB_OUTPUT"
-          echo "ps5=$(./urcapgen matrix ps5)" >> "$GITHUB_OUTPUT"
-          echo "psx=$(./urcapgen matrix psx)" >> "$GITHUB_OUTPUT"
-          [ "$urcaps" = "[]" ] && echo "any=false" >> "$GITHUB_OUTPUT" || echo "any=true" >> "$GITHUB_OUTPUT"
+          any=true
+          if [ "$urcaps" = "[]" ]; then any=false; fi
+          {
+            echo "urcaps=$urcaps"
+            echo "ps5=$(./urcapgen matrix ps5)"
+            echo "psx=$(./urcapgen matrix psx)"
+            echo "any=$any"
+          } >> "$GITHUB_OUTPUT"
           echo "URCaps: $urcaps"
 
   static:
@@ -248,8 +252,8 @@ jobs:
           PSX: ${{ needs.e2e-psx.result }}
         run: |
           echo "plan=$PLAN static=$STATIC build=$BUILD ps5-api=$API e2e-ps5=$PS5 e2e-psx=$PSX (URCaps touched: $ANY)"
-          [ "$PLAN" = success ] && [ "$STATIC" = success ] || { echo "::error::plan=$PLAN static=$STATIC"; exit 1; }
+          if [ "$PLAN" != success ] || [ "$STATIC" != success ]; then echo "::error::plan=$PLAN static=$STATIC"; exit 1; fi
           if [ "$ANY" != true ]; then echo "no URCap touched"; exit 0; fi
           for r in "$BUILD" "$API" "$PS5" "$PSX"; do
-            [ "$r" = success ] || { echo "::error::a URCap job did not pass"; exit 1; }
+            if [ "$r" != success ]; then echo "::error::a URCap job did not pass"; exit 1; fi
           done

@@ -40,6 +40,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh label create urcapgen-attention --color B60205 --description "UR released something urcapgen does not test yet" 2>/dev/null || true
-          body=$(printf 'Universal Robots published releases the CI matrix does not cover yet:\n\n```\n%s\n```\n\nUpgrade urcapgen (`./urcapgen upgrade` from a newer urcapgen) or add them to `tools/urcapgen/e2e.py`, then let the URCaps workflow run.' "$(cat report.txt)")
+          fence='```'
+          body="Universal Robots published releases the CI matrix does not cover yet:
+
+          $fence
+          $(cat report.txt)
+          $fence
+
+          Upgrade urcapgen (./urcapgen upgrade from a newer urcapgen) or add them to tools/urcapgen/e2e.py, then let the URCaps workflow run."
           n=$(gh issue list --label urcapgen-attention --state open --json number --jq '.[0].number')
           if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "New UR releases to test against" --label urcapgen-attention --body "$body"; fi

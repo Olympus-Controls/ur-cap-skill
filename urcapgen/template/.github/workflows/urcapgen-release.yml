@@ -64,18 +64,20 @@ jobs:
           ID: ${{ steps.info.outputs.id }}
           NAME: ${{ steps.info.outputs.name }}
         run: |
-          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS && cd ..
+          (cd dist && sha256sum -- ./* | sed 's#  \./#  #' > SHA256SUMS && cat SHA256SUMS)
           prev=$(git describe --tags --abbrev=0 --match "$ID-v*" "$TAG^" 2>/dev/null || true)
+          shopt -s nullglob
+          ps5=(dist/*.urcap) magic=(dist/urmagic_*.sh) psx=(dist/*.urcapx)
           {
             echo "**$NAME** for Universal Robots."
             echo
-            if ls dist/*.urcap >/dev/null 2>&1; then
-              echo "**PolyScope 5 (e-Series):** copy \`$(cd dist && ls *.urcap)\` to a FAT32 USB stick → ☰ Settings → System → URCaps → **+** → the file → Open → **Restart**."
-              echo "Or copy \`$(cd dist && ls urmagic_*.sh)\` beside it on the stick: with Settings → Security → General → **Run magic files** enabled, the robot installs it when the stick goes in (arm powered off, no program running)."
+            if [ ${#ps5[@]} -gt 0 ]; then
+              echo "**PolyScope 5 (e-Series):** copy \`$(basename "${ps5[0]}")\` to a FAT32 USB stick → ☰ Settings → System → URCaps → **+** → the file → Open → **Restart**."
+              echo "Or copy \`$(basename "${magic[0]}")\` beside it on the stick: with Settings → Security → General → **Run magic files** enabled, the robot installs it when the stick goes in (arm powered off, no program running)."
               echo
             fi
-            if ls dist/*.urcapx >/dev/null 2>&1; then
-              echo "**PolyScope X:** ☰ → System Manager → URCaps → add \`$(cd dist && ls *.urcapx)\` from a USB stick."
+            if [ ${#psx[@]} -gt 0 ]; then
+              echo "**PolyScope X:** ☰ → System Manager → URCaps → add \`$(basename "${psx[0]}")\` from a USB stick."
               echo
             fi
             echo "### Changes${prev:+ since $prev}"
